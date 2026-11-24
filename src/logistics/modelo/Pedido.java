@@ -1,5 +1,6 @@
 package logistics.modelo;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -9,13 +10,17 @@ import logistics.envio.EstrategiaEnvio;
 import logistics.envio.Paquete;
 import logistics.estado.EstadoPedido;
 import logistics.estado.Pendiente;
+import logistics.eventos.EventoPedido;
+import logistics.eventos.ObservadorPedido;
+import logistics.eventos.PublicadorEventos;
 
 /**
  * Pedido de la plataforma. Es el contexto del patrón State: delega cada
  * transición en su estado actual y se queda con el estado que este devuelve.
  * También es el contexto del patrón Strategy: guarda la modalidad de envío
  * elegida y le delega el cálculo de la tarifa.
- * En el siguiente commit se le agregan los observadores (Observer).
+ * Y es el sujeto observado (Observer): después de cada transición exitosa
+ * publica un EventoPedido para los suscriptores.
  */
 public class Pedido {
 
@@ -26,6 +31,7 @@ public class Pedido {
     private double descuento;
     private EstadoPedido estado = new Pendiente();
     private EstrategiaEnvio envio = new EnvioEstandar();
+    private final PublicadorEventos eventos = new PublicadorEventos();
 
     public Pedido(String id, Cliente cliente, List<LineaPedido> lineas, Direccion direccion) {
         if (lineas == null || lineas.isEmpty()) {
@@ -57,8 +63,24 @@ public class Pedido {
         transicionar(estado.cancelar());
     }
 
+    /**
+     * Solo llega aquí si el estado aceptó la acción; si no, ya lanzó
+     * TransicionInvalidaException y no se publica ningún evento.
+     */
     private void transicionar(EstadoPedido nuevo) {
+        EstadoPedido anterior = estado;
         estado = nuevo;
+        eventos.publicar(new EventoPedido(id, cliente.correo(), anterior, nuevo, Instant.now()));
+    }
+
+    /** Suscribe un observador a todas las transiciones. */
+    public void suscribir(ObservadorPedido observador) {
+        eventos.suscribir(observador);
+    }
+
+    /** Suscribe un observador solo a las transiciones que llegan a ese estado. */
+    public void suscribirA(Class<? extends EstadoPedido> estadoDestino, ObservadorPedido observador) {
+        eventos.suscribirA(estadoDestino, observador);
     }
 
     public EstadoPedido getEstado() {
